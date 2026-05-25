@@ -2,23 +2,42 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AR Slime Sandbox - 主動抓取史萊姆實驗</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AR Slime Sandbox - Mobile Optimized</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        /* 鎖定全螢幕，防止手機網頁橡皮筋滾動 */
+        html, body { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            overflow: hidden; background-color: #000; font-family: sans-serif;
+            position: fixed;
+        }
         
-        /* 視訊畫面全螢幕置底鏡像 */
-        #webcam-container { position: absolute; width: 100vw; height: 100vh; z-index: 1; transform: scaleX(-1); }
+        /* 視訊視窗置底，100% 鋪滿 */
+        #webcam-container { 
+            position: absolute; top: 0; left: 0; 
+            width: 100vw; height: 100vh; z-index: 1; 
+            transform: scaleX(-1); 
+        }
         #webcam { width: 100%; height: 100%; object-fit: cover; }
         
-        /* Three.js 3D 畫布重疊在上層 */
-        #canvas-container { position: absolute; width: 100vw; height: 100vh; z-index: 5; pointer-events: none; }
+        /* 3D 畫布完全覆蓋 */
+        #canvas-container { 
+            position: absolute; top: 0; left: 0; 
+            width: 100vw; height: 100vh; z-index: 5; 
+            pointer-events: none; 
+        }
         
-        /* UI 說明面板 */
-        #ui-panel { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(15, 23, 42, 0.75); padding: 20px; border-radius: 12px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.5); backdrop-filter: blur(8px); max-width: 280px; }
-        h1 { margin: 0 0 8px 0; font-size: 1.1rem; color: #a855f7; }
-        #status { font-size: 0.85rem; color: #eab308; font-weight: bold; margin-bottom: 8px; }
-        .hint { font-size: 0.75rem; color: #cbd5e1; line-height: 1.4; }
+        /* 輕量化行動端 UI 面板，移到下方避免擋住中央 */
+        #ui-panel { 
+            position: absolute; bottom: 20px; left: 5%; 
+            width: 90%; z-index: 10; 
+            background: rgba(15, 23, 42, 0.8); padding: 12px; 
+            border-radius: 12px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
+            backdrop-filter: blur(8px); box-sizing: border-box;
+        }
+        h1 { margin: 0 0 4px 0; font-size: 1rem; color: #a855f7; display: inline-block; }
+        #status { font-size: 0.85rem; color: #eab308; font-weight: bold; float: right; }
+        .hint { font-size: 0.7rem; color: #cbd5e1; line-height: 1.3; margin-top: 4px; clear: both; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
@@ -35,12 +54,7 @@
     <div id="ui-panel">
         <h1>AR 史萊姆沙盒</h1>
         <div id="status">準備中...</div>
-        <div class="hint">
-            💡 <b>互動指南：</b><br>
-            1. 史萊姆一開始會<b>停留在畫面正中央</b>。<br>
-            2. 將手移到物體處，用<b>大拇指與食指做出捏合動作</b>，即可將它抓起帶走！<br>
-            3. 鬆開手指，史萊姆就會留在原地。
-        </div>
+        <div class="hint">💡 伸手至畫面中央，大拇指與食指<b>捏合</b>即可抓走紫色史萊姆！支援手機轉動橫放。</div>
     </div>
 
     <script src="hand-tracker.js"></script>

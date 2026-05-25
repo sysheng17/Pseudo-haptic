@@ -1,7 +1,6 @@
 let videoElement = document.getElementById('webcam');
 let statusElement = document.getElementById('status');
 
-// 全域共享的手勢資料狀態
 let handData = {
     hasHand: false,
     indexTip: { x: 0, y: 0, z: 0 },
@@ -15,7 +14,7 @@ function onHandResults(results) {
         handData.hasHand = true;
         const landmarks = results.multiHandLandmarks[0];
         
-        // 映射至 2D 歸一化裝置座標系 (-1 ~ 1)
+        // 精準歸一化映射
         handData.indexTip.x = (1 - landmarks[8].x) * 2 - 1;
         handData.indexTip.y = (1 - landmarks[8].y) * 2 - 1;
         handData.indexTip.z = landmarks[8].z;
@@ -24,14 +23,13 @@ function onHandResults(results) {
         handData.thumbTip.y = (1 - landmarks[4].y) * 2 - 1;
         handData.thumbTip.z = landmarks[4].z;
 
-        // 計算食指與大拇指尖的距離
         const dist = Math.sqrt(
             Math.pow(handData.indexTip.x - handData.thumbTip.x, 2) +
             Math.pow(handData.indexTip.y - handData.thumbTip.y, 2)
         );
 
-        // 兩指距離小於閾值判定為「捏合準備抓取」
-        if (dist < 0.16) {
+        // 手機螢幕較小，微調捏合判定敏感度
+        if (dist < 0.20) {
             handData.isPinching = true;
             handData.pinchCenter.x = (handData.indexTip.x + handData.thumbTip.x) / 2;
             handData.pinchCenter.y = (handData.indexTip.y + handData.thumbTip.y) / 2;
@@ -51,17 +49,18 @@ const hands = new Hands({
 
 hands.setOptions({
     maxNumHands: 1,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.6,
-    minTrackingConfidence: 0.6
+    modelComplexity: 0, // 手機端設為 0 加快運算，降低發熱
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
 });
 hands.onResults(onHandResults);
 
+// 行動端優化：使用動態寬高，不寫死解析度
 const camera = new Camera(videoElement, {
     onFrame: async () => {
         await hands.send({ image: videoElement });
     },
-    width: window.innerWidth,
-    height: window.innerHeight
+    width: { ideal: 640 },
+    height: { ideal: 480 }
 });
 camera.start();
