@@ -1,12 +1,13 @@
 let videoElement = document.getElementById('webcam');
 let statusElement = document.getElementById('status');
 
+// 全域共享的手勢資料狀態
 let handData = {
     hasHand: false,
-    indexTip: { x: 0, y: 0, z: 0 },   // 食指尖 (史萊姆依附錨點)
-    thumbTip: { x: 0, y: 0, z: 0 },   // 大拇指尖 (用來捏拉史萊姆)
-    isPinching: false,                // 是否兩指捏合
-    pinchCenter: { x: 0, y: 0, z: 0 }
+    indexPad: { x: 0, y: 0, z: 0 },   // 【修復 1】從 Tip 換成 Pad 指腹中心 (更精準的接觸點)
+    thumbPad: { x: 0, y: 0, z: 0 },   
+    isPinching: false,
+    pinchCenterNDC: { x: 0, y: 0, z: 0 }
 };
 
 function onHandResults(results) {
@@ -15,28 +16,29 @@ function onHandResults(results) {
         const landmarks = results.multiHandLandmarks[0];
         
         // 映射至 2D 歸一化裝置座標系 (-1 ~ 1) NDC
-        // 1. 食指尖 (節點 8)
-        handData.indexTip.x = (1 - landmarks[8].x) * 2 - 1;
-        handData.indexTip.y = (1 - landmarks[8].y) * 2 - 1;
-        handData.indexTip.z = landmarks[8].z;
+        // 【核心修正】捨棄 Tip (8, 4)，改用接近肉墊的關節 (7, 3)
+        // 1. 食指指腹肉墊附近 (節點 7)
+        handData.indexPad.x = (1 - landmarks[7].x) * 2 - 1;
+        handData.indexPad.y = (1 - landmarks[7].y) * 2 - 1;
+        handData.indexPad.z = landmarks[7].z;
 
-        // 2. 大拇指尖 (節點 4)
-        handData.thumbTip.x = (1 - landmarks[4].x) * 2 - 1;
-        handData.thumbTip.y = (1 - landmarks[4].y) * 2 - 1;
-        handData.thumbTip.z = landmarks[4].z;
+        // 2. 大拇指指腹肉墊附近 (節點 3)
+        handData.thumbPad.x = (1 - landmarks[3].x) * 2 - 1;
+        handData.thumbPad.y = (1 - landmarks[3].y) * 2 - 1;
+        handData.thumbPad.z = landmarks[3].z;
 
         // 計算兩指在螢幕上的 2D 距離
-        const dist = Math.sqrt(
-            Math.pow(handData.indexTip.x - handData.thumbTip.x, 2) +
-            Math.pow(handData.indexTip.y - handData.thumbTip.y, 2)
+        const dist2D = Math.sqrt(
+            Math.pow(handData.indexPad.x - handData.thumbPad.x, 2) +
+            Math.pow(handData.indexPad.y - handData.thumbPad.y, 2)
         );
 
-        // 兩指距離小於閾值判定為捏合 (AR 手機端稍微調高敏感度 0.22)
-        if (dist < 0.22) {
+        // 判定為捏合 (AR 手機端稍微調低門檻 0.18，因為指腹接觸距離較近)
+        if (dist2D < 0.18) {
             handData.isPinching = true;
-            handData.pinchCenter.x = (handData.indexTip.x + handData.thumbTip.x) / 2;
-            handData.pinchCenter.y = (handData.indexTip.y + handData.thumbTip.y) / 2;
-            handData.pinchCenter.z = (handData.indexTip.z + handData.thumbTip.z) / 2;
+            handData.pinchCenterNDC.x = (handData.indexPad.x + handData.thumbPad.x) / 2;
+            handData.pinchCenterNDC.y = (handData.indexPad.y + handData.thumbPad.y) / 2;
+            handData.pinchCenterNDC.z = (handData.indexPad.z + handData.thumbPad.z) / 2;
         } else {
             handData.isPinching = false;
         }
@@ -52,13 +54,12 @@ const hands = new Hands({
 
 hands.setOptions({
     maxNumHands: 1,
-    modelComplexity: 0, // 手機端加快運算，降低發熱
+    modelComplexity: 0, 
     minDetectionConfidence: 0.6,
     minTrackingConfidence: 0.6
 });
 hands.onResults(onHandResults);
 
-// 使用動態寬高，不寫死解析度
 const camera = new Camera(videoElement, {
     onFrame: async () => {
         await hands.send({ image: videoElement });

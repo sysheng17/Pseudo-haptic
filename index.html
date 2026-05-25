@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Slime Sandbox - Mobile Optimized</title>
+    <title>AR Pad-Contact Slime - 指腹肉墊實驗</title>
     <style>
-        /* 鎖定全螢幕，防止手機網頁橡皮筋滾動 */
+        /* 鎖定手機全螢幕，防止橡皮筋滾動 */
         html, body { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
             overflow: hidden; background-color: #000; font-family: sans-serif;
             position: fixed;
         }
         
-        /* 視訊視窗置底，100% 鋪滿 */
+        /* 視訊視窗置底，100% 鋪滿且鏡像 */
         #webcam-container { 
             position: absolute; top: 0; left: 0; 
             width: 100vw; height: 100vh; z-index: 1; 
@@ -20,14 +20,14 @@
         }
         #webcam { width: 100%; height: 100%; object-fit: cover; }
         
-        /* 3D 畫布完全覆蓋 */
+        /* 3D 畫布覆蓋 */
         #canvas-container { 
             position: absolute; top: 0; left: 0; 
             width: 100vw; height: 100vh; z-index: 5; 
             pointer-events: none; 
         }
         
-        /* UI 面板，移到下方 */
+        /* 行動端 UI */
         #ui-panel { 
             position: absolute; bottom: 20px; left: 5%; 
             width: 90%; z-index: 10; 
@@ -35,8 +35,8 @@
             border-radius: 12px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
             backdrop-filter: blur(8px); box-sizing: border-box;
         }
-        h1 { margin: 0 0 4px 0; font-size: 1rem; color: #a855f7; display: inline-block; }
-        #status { font-size: 0.85rem; color: #eab308; font-weight: bold; float: right; }
+        h1 { margin: 0 0 4px 0; font-size: 1rem; color: #10b981; display: inline-block; }
+        #status { font-size: 0.85rem; color: #facc15; font-weight: bold; float: right; }
         .hint { font-size: 0.7rem; color: #cbd5e1; line-height: 1.3; margin-top: 4px; clear: both; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -52,9 +52,9 @@
     <div id="canvas-container"></div>
 
     <div id="ui-panel">
-        <h1>AR 食指史萊姆</h1>
+        <h1>AR 史萊姆指腹互動</h1>
         <div id="status">準備中...</div>
-        <div class="hint">💡 伸出右手，綠色史萊姆會黏附在您的食指尖上。用同隻手的大拇指去接近捏取，可以拉扯它！</div>
+        <div class="hint">💡 <b>指腹接觸模式：</b>請使用食指與大拇指的<b>肉墊（指腹）中心</b>去捏取、拉扯物體，更能感受到史萊姆的厚重黏感。</div>
     </div>
 
     <script src="hand-tracker.js"></script>
