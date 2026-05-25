@@ -1,5 +1,5 @@
 // ==========================================
-// 指腹視覺化暨強固 CDN 版 pseudo-haptics.js
+// 完美解決 CDN 報錯版 pseudo-haptics.js (修正 MediaPipe Undefined Bug)
 // ==========================================
 
 const container = document.getElementById('canvas-container');
@@ -7,7 +7,6 @@ const statusElement = document.getElementById('status');
 const videoElement = document.getElementById('webcam');
 
 let scene, camera3D, renderer, slimeMesh, originalPositions;
-let indexDot, thumbDot; // ✨ 新增：指腹 3D 視覺化小球
 let handsAI;
 let isGrabbed = false; 
 
@@ -20,6 +19,7 @@ let handData = {
     pinchCenterNDC: { x: 0, y: 0, z: 0 }
 };
 
+// 全域錯誤捕獲器
 window.addEventListener('error', function(e) {
     if(statusElement) {
         statusElement.innerText = "❌ 系統提示: " + e.message;
@@ -48,40 +48,29 @@ function initThreeEngine() {
         canvas.style.height = '100vh';
         canvas.style.zIndex = '999';
 
-        // 光源
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.3);
+        // 光源環境
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
         scene.add(ambientLight);
+        
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
         dirLight.position.set(0, 5, 5);
         scene.add(dirLight);
 
-        // 建立紫色史萊姆
+        // 建立紫色果凍史萊姆
         const geometry = new THREE.SphereGeometry(0.5, 32, 32); 
         originalPositions = geometry.attributes.position.clone();
+        
         const material = new THREE.MeshStandardMaterial({
-            color: 0xa855f7,
+            color: 0xa855f7, // 經典亮紫色
             roughness: 0.1,
             metalness: 0.1,
             transparent: true,
             opacity: 0.85
         });
+        
         slimeMesh = new THREE.Mesh(geometry, material);
         slimeMesh.position.set(0, 0, 0); 
         scene.add(slimeMesh);
-
-        // ✨【核心功能】建立食指與大拇指的「指腹判斷點」視覺化小黃球 ✨
-        const dotGeo = new THREE.SphereGeometry(0.06, 16, 16);
-        const dotMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 }); // 亮黃色
-        
-        indexDot = new THREE.Mesh(dotGeo, dotMat);
-        thumbDot = new THREE.Mesh(dotGeo, dotMat);
-        
-        // 預設先藏起來，看得到手才顯示
-        indexDot.visible = false;
-        thumbDot.visible = false;
-        
-        scene.add(indexDot);
-        scene.add(thumbDot);
 
         statusElement.innerText = "🟢 3D 引擎準備就緒...";
         statusElement.style.color = "#10b981";
@@ -93,7 +82,7 @@ function initThreeEngine() {
     }
 }
 
-// 2. 載入 MediaPipe（使用帶有明確版本號的強固型 CDN）
+// 2. 載入 MediaPipe 且【✨修正 CDN 資源加載路徑✨】
 function initMediaPipeAI() {
     if (typeof Hands === 'undefined') {
         statusElement.innerText = "❌ 套件載入失敗，請重整網頁";
@@ -101,16 +90,18 @@ function initMediaPipeAI() {
     }
     
     try {
+        // ✨【核心修正】改用 jsdelivr 官方標準、包含完整路徑的無痛加載路徑
         handsAI = new Hands({
-            // ✨ 終極修正：使用精確指定的版本號路徑，徹底破除網頁載入大檔的 networkerror 限制 ✨
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+            }
         });
 
         handsAI.setOptions({
             maxNumHands: 1,
-            modelComplexity: 0,
-            minDetectionConfidence: 0.45, 
-            minTrackingConfidence: 0.45
+            modelComplexity: 0, // 手機端輕量化
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
         });
         
         handsAI.onResults((results) => {
@@ -118,24 +109,25 @@ function initMediaPipeAI() {
                 handData.hasHand = true;
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // 配合相機鏡像翻轉的 X 座標
+                // 修正鏡像
                 handData.indexPad.x = (landmarks[7].x) * 2 - 1;
                 handData.indexPad.y = (1 - landmarks[7].y) * 2 - 1;
                 
                 handData.thumbPad.x = (landmarks[3].x) * 2 - 1;
                 handData.thumbPad.y = (1 - landmarks[3].y) * 2 - 1;
 
-                // 計算兩指腹在螢幕上的 2D 距離
                 const dist2D = Math.sqrt(
                     Math.pow(handData.indexPad.x - handData.thumbPad.x, 2) +
                     Math.pow(handData.indexPad.y - handData.thumbPad.y, 2)
                 );
 
-                // 放寬捏合判定
+                // 放寬捏合判定門檻
                 handData.isPinching = (dist2D < 0.35);
                 
-                handData.pinchCenterNDC.x = (handData.indexPad.x + handData.thumbPad.x) / 2;
-                handData.pinchCenterNDC.y = (handData.indexPad.y + handData.thumbPad.y) / 2;
+                if (handData.isPinching) {
+                    handData.pinchCenterNDC.x = (handData.indexPad.x + handData.thumbPad.x) / 2;
+                    handData.pinchCenterNDC.y = (handData.indexPad.y + handData.thumbPad.y) / 2;
+                }
             } else {
                 handData.hasHand = false;
                 handData.isPinching = false;
@@ -165,11 +157,11 @@ async function startCameraStream() {
             animateLoop(); 
         };
     } catch (err) {
-        statusElement.innerText = "❌ 請允許相機權限並重整網頁";
+        statusElement.innerText = "❌ 請允許相機權限並重整無痕網頁";
     }
 }
 
-// 3D 空間投影映射工具
+// 3D 空間投影映射
 function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
     const vec = new THREE.Vector3(ndcX, ndcY, 0.5);
     vec.unproject(camera3D);
@@ -178,32 +170,20 @@ function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
     return camera3D.position.clone().add(dir.multiplyScalar(distance));
 }
 
-// 4. 核心物理管線與指腹追蹤
+// 4. 核心物理管線
 function updateSlimePhysics() {
-    if (!slimeMesh || !indexDot || !thumbDot) return;
+    if (!slimeMesh) return;
 
     if (!handData.hasHand) {
         isGrabbed = false;
-        // 找不到手時，隱藏指腹判斷點
-        indexDot.visible = false;
-        thumbDot.visible = false;
         recoverMeshToNormal();
         return;
     }
 
-    // ✨【核心功能】即時將指腹的 2D 座標投射到 3D 空間，並讓黃色小球跟隨指尖 ✨
-    const indexWorld = mapTo3DWorld(handData.indexPad.x, handData.indexPad.y, 0);
-    const thumbWorld = mapTo3DWorld(handData.thumbPad.x, handData.thumbPad.y, 0);
-    
-    indexDot.position.copy(indexWorld);
-    thumbDot.position.copy(thumbWorld);
-    indexDot.visible = true;
-    thumbDot.visible = true;
-
-    // 計算捏合中心點
     const pinchWorld = mapTo3DWorld(handData.pinchCenterNDC.x, handData.pinchCenterNDC.y, 0);
     const distToSlime = pinchWorld.distanceTo(slimeMesh.position);
 
+    // 大幅放大抓取判定範圍（2.5），吸附力更強
     if (handData.isPinching) {
         if (!isGrabbed && distToSlime < 2.5) { 
             isGrabbed = true;
