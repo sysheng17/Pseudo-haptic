@@ -1,5 +1,5 @@
 // ========================================================
-// 完全免外部資產版 pseudo-haptics.js (徹底根治 NetworkError)
+// 完美動態適應版 pseudo-haptics.js (解決不認手問題)
 // ========================================================
 
 const container = document.getElementById('canvas-container');
@@ -10,7 +10,6 @@ let scene, camera3D, renderer, slimeMesh, originalPositions;
 let handsAI;
 let isGrabbed = false; 
 
-// 全域手勢資料狀態機
 let handData = {
     hasHand: false,
     indexPad: { x: 0, y: 0, z: 0 },
@@ -19,7 +18,6 @@ let handData = {
     pinchCenterNDC: { x: 0, y: 0, z: 0 }
 };
 
-// 全域錯誤捕獲器
 window.addEventListener('error', function(e) {
     if(statusElement) {
         statusElement.innerText = "❌ 系統提示: " + e.message;
@@ -27,7 +25,6 @@ window.addEventListener('error', function(e) {
     }
 });
 
-// 1. 初始化 Three.js 3D 引擎
 function initThreeEngine() {
     try {
         scene = new THREE.Scene();
@@ -35,7 +32,6 @@ function initThreeEngine() {
         camera3D = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
         camera3D.position.set(0, 0, 5); 
 
-        // 開啟透明背景
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -49,7 +45,6 @@ function initThreeEngine() {
         canvas.style.height = '100vh';
         canvas.style.zIndex = '999';
 
-        // 設置光照
         const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
         scene.add(ambientLight);
         
@@ -57,7 +52,6 @@ function initThreeEngine() {
         dirLight.position.set(0, 5, 5);
         scene.add(dirLight);
 
-        // 建立紫色果凍史萊姆
         const geometry = new THREE.SphereGeometry(0.5, 32, 32); 
         originalPositions = geometry.attributes.position.clone();
         
@@ -83,7 +77,6 @@ function initThreeEngine() {
     }
 }
 
-// 2. 初始化 MediaPipe 手勢 AI（✨ 終極修正：完全排空外部請求 ✨）
 function initMediaPipeAI() {
     if (typeof Hands === 'undefined') {
         statusElement.innerText = "❌ 套件載入失敗，請重整網頁";
@@ -91,20 +84,18 @@ function initMediaPipeAI() {
     }
     
     try {
-        // 🔥 終極核心修正：完全把 locateFile 留空或返回 null！
-        // 強迫 MediaPipe 直接使用 index.html 頂部已經被瀏覽器快取好、編譯好的現成全包 JS，不准它對外 fetch 任何 .data。
+        // ✨【關鍵修正】精準導向解決不認手的 Wasm 運行庫網址 ✨
         handsAI = new Hands({
             locateFile: (file) => {
-                console.log("AI 請求了文件，已強制阻斷外部連線以防止 NetworkError:", file);
-                return ""; 
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
             }
         });
 
         handsAI.setOptions({
             maxNumHands: 1,
-            modelComplexity: 0, 
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
+            modelComplexity: 0, // 0 代表最輕量，手機版運算專用
+            minDetectionConfidence: 0.4, // 稍微調低初始門檻，確保手機前鏡頭能秒認手
+            minTrackingConfidence: 0.4
         });
         
         handsAI.onResults((results) => {
@@ -112,7 +103,7 @@ function initMediaPipeAI() {
                 handData.hasHand = true;
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // 鏡像修復
+                // X 軸鏡像同步修正
                 handData.indexPad.x = (landmarks[7].x) * 2 - 1;
                 handData.indexPad.y = (1 - landmarks[7].y) * 2 - 1;
                 
@@ -124,6 +115,7 @@ function initMediaPipeAI() {
                     Math.pow(handData.indexPad.y - handData.thumbPad.y, 2)
                 );
 
+                // 判定捏合
                 handData.isPinching = (dist2D < 0.35);
                 
                 if (handData.isPinching) {
@@ -142,7 +134,6 @@ function initMediaPipeAI() {
     }
 }
 
-// 3. 喚醒前鏡頭
 async function startCameraStream() {
     try {
         const constraints = {
@@ -163,7 +154,6 @@ async function startCameraStream() {
     }
 }
 
-// 3D 空間反投影映射
 function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
     const vec = new THREE.Vector3(ndcX, ndcY, 0.5);
     vec.unproject(camera3D);
@@ -172,7 +162,6 @@ function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
     return camera3D.position.clone().add(dir.multiplyScalar(distance));
 }
 
-// 4. 史萊姆物理形變與拉扯管線
 function updateSlimePhysics() {
     if (!slimeMesh) return;
 
@@ -244,7 +233,6 @@ function recoverMeshToNormal() {
     }
 }
 
-// 5. 主循環
 async function animateLoop() {
     requestAnimationFrame(animateLoop);
     
