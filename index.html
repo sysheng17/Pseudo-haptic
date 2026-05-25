@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Slime Sandbox</title>
+    <title>AR Slime Sandbox - Secure Border</title>
     <style>
         html, body { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
@@ -21,6 +21,15 @@
         h1 { margin: 0 0 4px 0; font-size: 1rem; color: #a855f7; display: inline-block; }
         #status { font-size: 0.85rem; color: #facc15; font-weight: bold; float: right; }
     </style>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(reg => console.log('🛡️ 網頁防黑屏海關攔截哨已佈署完成！'))
+                .catch(err => console.error('海關註冊失敗', err));
+        }
+    </script>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
