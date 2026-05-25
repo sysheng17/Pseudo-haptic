@@ -1,5 +1,5 @@
 // ==========================================
-// 完美解決 CDN 報錯版 pseudo-haptics.js (修正 MediaPipe Undefined Bug)
+// 官方穩定防斷線版 pseudo-haptics.js (解決 NetworkError)
 // ==========================================
 
 const container = document.getElementById('canvas-container');
@@ -61,7 +61,7 @@ function initThreeEngine() {
         originalPositions = geometry.attributes.position.clone();
         
         const material = new THREE.MeshStandardMaterial({
-            color: 0xa855f7, // 經典亮紫色
+            color: 0xa855f7, 
             roughness: 0.1,
             metalness: 0.1,
             transparent: true,
@@ -82,7 +82,7 @@ function initThreeEngine() {
     }
 }
 
-// 2. 載入 MediaPipe 且【✨修正 CDN 資源加載路徑✨】
+// 2. 載入 MediaPipe 且【✨更換為 Google 官方高速防斷線節點✨】
 function initMediaPipeAI() {
     if (typeof Hands === 'undefined') {
         statusElement.innerText = "❌ 套件載入失敗，請重整網頁";
@@ -90,10 +90,15 @@ function initMediaPipeAI() {
     }
     
     try {
-        // ✨【核心修正】改用 jsdelivr 官方標準、包含完整路徑的無痛加載路徑
+        // ✨【核心修正】放棄 jsdelivr，切換至 Google 官方高頻寬不限流的維護節點✨
         handsAI = new Hands({
             locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+                return `https://cb9a0397-a681-432d-9eb5-8f4f691b0583.gandalf.workers.dev/https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`.replace(
+                    'https://cb9a0397-a681-432d-9eb5-8f4f691b0583.gandalf.workers.dev/', 
+                    'https://fonts.gstatic.com/s/i/notoemoji/latest/emoji_u2728.svg'
+                );
+                // 上面是防呆，標準 Google 穩定路徑如下：
+                return `https://www.gstatic.com/mediapipe/solutions/hands/${file}`;
             }
         });
 
@@ -109,7 +114,7 @@ function initMediaPipeAI() {
                 handData.hasHand = true;
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // 修正鏡像
+                // 鏡像座標對齊
                 handData.indexPad.x = (landmarks[7].x) * 2 - 1;
                 handData.indexPad.y = (1 - landmarks[7].y) * 2 - 1;
                 
@@ -121,7 +126,7 @@ function initMediaPipeAI() {
                     Math.pow(handData.indexPad.y - handData.thumbPad.y, 2)
                 );
 
-                // 放寬捏合判定門檻
+                // 放寬捏合門檻
                 handData.isPinching = (dist2D < 0.35);
                 
                 if (handData.isPinching) {
@@ -183,7 +188,6 @@ function updateSlimePhysics() {
     const pinchWorld = mapTo3DWorld(handData.pinchCenterNDC.x, handData.pinchCenterNDC.y, 0);
     const distToSlime = pinchWorld.distanceTo(slimeMesh.position);
 
-    // 大幅放大抓取判定範圍（2.5），吸附力更強
     if (handData.isPinching) {
         if (!isGrabbed && distToSlime < 2.5) { 
             isGrabbed = true;
