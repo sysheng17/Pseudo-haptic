@@ -3,62 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Slime Sandbox - Final Layer Fix</title>
+    <title>AR Slime Sandbox - Final Fix</title>
     <style>
-        /* 鎖定手機全螢幕，防止橡皮筋滾動 */
         html, body { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
             overflow: hidden; background-color: #000; font-family: sans-serif;
             position: fixed;
         }
-        
-        /* 視訊視窗置底，100% 鋪滿且鏡像 */
-        #webcam-container { 
-            position: absolute; top: 0; left: 0; 
-            width: 100vw; height: 100vh; z-index: 1; 
-            transform: scaleX(-1); 
-        }
-        #webcam { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* 3D 畫布完全覆蓋且置頂 (z-index: 999) */
-        /* ✨核心修正： pointer-events: none 讓點擊穿透到下層的 video ✨*/
-        #canvas-container { 
-            position: absolute; top: 0; left: 0; 
-            width: 100vw; height: 100vh; z-index: 999; 
-            pointer-events: none; 
-        }
-        
-        /* 輕量化行動端 UI */
+        #webcam-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; transform: scaleX(-1); }
+        #webcam { width: 100%; height: 100%; object-fit: cover; display: block; }
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 999; pointer-events: none; }
         #ui-panel { 
-            position: absolute; bottom: 30px; left: 5%; 
-            width: 90%; z-index: 1000; 
-            background: rgba(15, 23, 42, 0.8); padding: 12px; 
-            border-radius: 12px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.5); 
-            backdrop-filter: blur(8px); box-sizing: border-box;
+            position: absolute; bottom: 30px; left: 5%; width: 90%; z-index: 1000; 
+            background: rgba(15, 23, 42, 0.85); padding: 14px; border-radius: 12px; color: white; 
+            box-shadow: 0 4px 16px rgba(0,0,0,0.6); backdrop-filter: blur(8px); box-sizing: border-box;
         }
         h1 { margin: 0 0 4px 0; font-size: 1rem; color: #a855f7; display: inline-block; }
         #status { font-size: 0.85rem; color: #facc15; font-weight: bold; float: right; }
-        .hint { font-size: 0.7rem; color: #cbd5e1; line-height: 1.3; margin-top: 4px; clear: both; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-
-    <div id="webcam-container">
-        <video id="webcam" autoplay playsinline></video>
-    </div>
-    
+    <div id="webcam-container"><video id="webcam" autoplay playsinline muted></video></div>
     <div id="canvas-container"></div>
-
     <div id="ui-panel">
-        <h1>AR 史萊姆 sandbox</h1>
-        <div id="status">準備中...</div>
-        <div class="hint">💡 鏡頭已開啟，尋找右手指腹。請伸手至畫面中央，捏拿紫色球體帶走它！</div>
+        <h1>AR 史萊姆控制台</h1>
+        <div id="status">初始化中...</div>
     </div>
-
-    <script src="hand-tracker.js"></script>
     <script src="pseudo-haptics.js"></script>
 </body>
 </html>
