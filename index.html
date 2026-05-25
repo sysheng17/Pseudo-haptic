@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visuo-Haptic 3D Blender - 視覺觸覺互動實驗</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #111827; font-family: sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; z-index: 1; }
+        #webcam-container { position: absolute; bottom: 20px; right: 20px; width: 240px; height: 180px; z-index: 10; border: 2px solid #3b82f6; border-radius: 8px; transform: scaleX(-1); overflow: hidden; background: #000; }
+        #webcam { width: 100%; height: 100%; object-fit: cover; }
+        #ui-panel { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(31, 41, 55, 0.85); padding: 20px; border-radius: 12px; color: white; box-shadow: 0 4px 6px rgb(0 0 0 / 0.3); backdrop-filter: blur(4px); max-width: 300px; }
+        h1 { margin: 0 0 10px 0; font-size: 1.2rem; color: #60a5fa; }
+        .control-group { margin-bottom: 12px; }
+        label { display: block; font-size: 0.85rem; margin-bottom: 4px; color: #9ca3af; }
+        select, input { width: 100%; background: #374151; border: 1px solid #4b5563; color: white; padding: 6px; border-radius: 6px; box-sizing: border-box; }
+        #status { font-size: 0.85rem; color: #10b981; margin-top: 10px; font-weight: bold; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    
+    <div id="webcam-container">
+        <video id="webcam" autoplay playsinline></video>
+    </div>
+
+    <div id="ui-panel">
+        <h1>偽觸覺 3D 揉捏系統</h1>
+        <p style="font-size: 0.8rem; margin: 0 0 15px 0; color: #d1d5db;">請開啟鏡頭，用食指與大拇指捏戳螢幕上的 3D 物體。</p>
+        
+        <div class="control-group">
+            <label for="material-type">物體材質模擬</label>
+            <select id="material-type">
+                <option value="soft">軟糖 / 臉頰 (高擴散)</option>
+                <option value="sticky">史萊姆 (高黏滯牽絲)</option>
+                <option value="hard">金屬 / 剛體 (不變形)</option>
+            </select>
+        </div>
+
+        <div id="status">系統初始化中...</div>
+    </div>
+
+    <script src="hand-tracker.js"></script>
+    <script src="pseudo-haptics.js"></script>
+</body>
+</html>
