@@ -27,7 +27,7 @@
             pointer-events: none; 
         }
         
-        /* 輕量化行動端 UI 面板，移到下方避免擋住中央 */
+        /* UI 面板，移到下方 */
         #ui-panel { 
             position: absolute; bottom: 20px; left: 5%; 
             width: 90%; z-index: 10; 
@@ -52,9 +52,9 @@
     <div id="canvas-container"></div>
 
     <div id="ui-panel">
-        <h1>AR 史萊姆沙盒</h1>
+        <h1>AR 食指史萊姆</h1>
         <div id="status">準備中...</div>
-        <div class="hint">💡 伸手至畫面中央，大拇指與食指<b>捏合</b>即可抓走紫色史萊姆！支援手機轉動橫放。</div>
+        <div class="hint">💡 伸出右手，綠色史萊姆會黏附在您的食指尖上。用同隻手的大拇指去接近捏取，可以拉扯它！</div>
     </div>
 
     <script src="hand-tracker.js"></script>

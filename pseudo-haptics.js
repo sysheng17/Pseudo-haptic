@@ -1,77 +1,39 @@
-// ==========================================
-// 終極修復：修正手機直式/橫式投影飛出去問題 pseudo-haptics.js
-// ==========================================
-
+// 1. 初始化 Three.js 場景 (開啟 alpha 透明實現 AR)
 const container = document.getElementById('canvas-container');
-const statusElement = document.getElementById('status');
+const scene = new THREE.Scene();
 
-// 1. 初始化 Three.js 關鍵變數 (不使用 alpha 透明，確保 100% 顯色)
-let scene, camera3D, renderer, slimeMesh, originalPositions;
-let isGrabbed = false; 
+const camera3D = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+camera3D.position.set(0, 0, 6); // 稍微拉遠一點視距適配手機
 
-function initThree() {
-    try {
-        scene = new THREE.Scene();
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+container.appendChild(renderer.domElement);
 
-        // 【核心修正 A】動態 FOV 公式：直式手機需要廣角視野才不卡飛球
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        const isPortrait = height > width;
-        // 如果是直式，FOV 拉大到 65 (超廣角)；橫式則維持標準 50 
-        const fov = isPortrait ? 65 : 50;
-        
-        camera3D = new THREE.PerspectiveCamera(fov, width / height, 0.1, 100);
-        camera3D.position.set(0, 0, 5); // 稍微拉遠相機視距
+// 2. 設置光源
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0x22c55e, 0.8); // 史萊姆綠色指向光
+dirLight.position.set(2, 4, 3);
+scene.add(dirLight);
 
-        // 初始化渲染器 (強制開啟最顯色模式，先不依賴透明背景)
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-        renderer.setSize(width, height);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        container.appendChild(renderer.domElement);
-
-        // 強制渲染器 Canvas 直通最上層全螢幕
-        const canvas = renderer.domElement;
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.width = '100vw';
-        canvas.style.height = '100vh';
-        canvas.style.objectFit = 'contain';
-
-        // 2. 加入光源 (加強亮度與指向性，防止太暗)
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-        dirLight.position.set(0, 5, 5);
-        scene.add(dirLight);
-
-        // 3. 建立紫色史萊姆 (暫時不透明，確保能看見球)
-        const geometry = new THREE.SphereGeometry(0.55, 32, 32); // 稍微放大，提高顯色性
-        originalPositions = geometry.attributes.position.clone();
-        
-        const material = new THREE.MeshStandardMaterial({
-            color: 0xa855f7,        // 亮紫色
-            roughness: 0.2,
-            metalness: 0.1,
-            wireframe: false        // 如果還是看不到，可設為 true 測試
-        });
-        
-        slimeMesh = new THREE.Mesh(geometry, material);
-        // 【核心修正 B】強制死鎖在中央 (0, 0, 0)
-        slimeMesh.position.set(0, 0, 0); 
-        scene.add(slimeMesh);
-
-        console.log("Three.js 渲染器初始化成功，FOV:", fov);
-        animate();
-    } catch (error) {
-        statusElement.innerText = "❌ WebGL 初始化失敗: " + error.message;
-        statusElement.style.color = "#ef4444";
-    }
-}
+// 3. 建立黏滯史萊姆 (初始位置固定在螢幕正中央，直徑較小)
+const geometry = new THREE.SphereGeometry(0.35, 64, 64);
+const originalPositions = geometry.attributes.position.clone();
+const material = new THREE.MeshStandardMaterial({
+    color: 0x22c55e,        // 經典史萊姆螢光綠
+    roughness: 0.1,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 0.85,
+    wireframe: false
+});
+const slimeMesh = new THREE.Mesh(geometry, material);
+slimeMesh.position.set(0, 0, 0); 
+scene.add(slimeMesh);
 
 // 座標映射轉換工具
 function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
-    if (!camera3D) return new THREE.Vector3(0,0,0);
     const vec = new THREE.Vector3(ndcX, ndcY, 0.5);
     vec.unproject(camera3D);
     const dir = vec.sub(camera3D.position).normalize();
@@ -79,130 +41,86 @@ function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
     return camera3D.position.clone().add(dir.multiplyScalar(distance));
 }
 
-// 4. 核心：主動抓取與形變管線
-function updateGrabSandboxPipeline() {
-    if (!slimeMesh || !geometry || typeof handData === 'undefined') return;
-
-    if (!handData.hasHand) {
-        isGrabbed = false;
-        if (statusElement.innerText.includes("準備中") || statusElement.innerText.includes("尋找手部")) {
-            // 維持 hand-tracker.js 傳來的「尋找手部中...」狀態
-        } else {
-            statusElement.innerText = " 👋 看到手了！請主動捏拿中央球體";
-            statusElement.style.color = "#10b981";
-        }
+// 4. 核心：AR 骨骼錨定與非接觸黏滯牽絲形變演算法
+function updateArStickyPipeline() {
+    if (typeof handData === 'undefined' || !handData.hasHand) {
+        slimeMesh.visible = false;
         recoverMeshToNormal();
         return;
     }
+    slimeMesh.visible = true;
 
-    // 將捏合中心點映射至 3D 空間 ( targetZ = 0.5，稍微往前推一點便於在手機抓取)
-    const pinchWorld = mapTo3DWorld(handData.pinchCenter.x, handData.pinchCenter.y, 0.5);
-    
-    // 計算手部捏合點與史萊姆中心點的距離
-    const distToSlime = pinchWorld.distanceTo(slimeMesh.position);
+    // 將食指尖與大拇指尖轉化為 3D 空間實際座標
+    const indexWorld = mapTo3DWorld(handData.indexTip.x, handData.indexTip.y, 0);
+    const thumbWorld = mapTo3DWorld(handData.thumbTip.x, handData.thumbTip.y, 0);
 
-    if (handData.isPinching) {
-        if (!isGrabbed && distToSlime < 1.2) { // 手機端拉大判定範圍，更好抓
-            isGrabbed = true;
-        }
-    } else {
-        isGrabbed = false;
-    }
+    // 【座標排除問題核心】
+    // 一開始位置強制錨定鎖定在「食指尖」上
+    slimeMesh.position.copy(indexWorld);
 
     const positions = geometry.attributes.position;
+    
+    // 如果大拇指和食指正在捏合 (代表拉扯狀態)
+    let isPulling = handData.isPinching;
 
-    if (isGrabbed) {
-        statusElement.innerText = " 🟣 抓取成功！移動中";
-        statusElement.style.color = "#a855f7";
+    // 計算大拇指在史萊姆局部座標系的座標 (計算頂點位移)
+    let localThumb = thumbWorld.clone().sub(slimeMesh.position);
 
-        slimeMesh.position.lerp(pinchWorld, 0.2); // 手機端加快隨動速度
+    for (let i = 0; i < positions.count; i++) {
+        let origX = originalPositions.getX(i);
+        let origY = originalPositions.getY(i);
+        let origZ = originalPositions.getZ(i);
 
-        let localPinch = pinchWorld.clone().sub(slimeMesh.position);
+        let currentX = positions.getX(i);
+        let currentY = positions.getY(i);
+        let currentZ = positions.getZ(i);
+
+        let vertexPos = new THREE.Vector3(origX, origY, origZ);
         
-        for (let i = 0; i < positions.count; i++) {
-            let origX = originalPositions.getX(i);
-            let origY = originalPositions.getY(i);
-            let origZ = originalPositions.getZ(i);
-            let currentX = positions.getX(i);
-            let currentY = positions.getY(i);
-            let currentZ = positions.getZ(i);
+        // 頂點與大拇指拉扯點的距離
+        let distToThumb = vertexPos.distanceTo(localThumb);
+        let effectRadius = 0.9;
 
-            let vertexPos = new THREE.Vector3(origX, origY, origZ);
-            let distToLocalPinch = vertexPos.distanceTo(localPinch);
-            let effectRadius = 0.8;
-
-            if (distToLocalPinch < effectRadius) {
-                let pull = Math.pow(1.0 - (distToLocalPinch / effectRadius), 2);
-                let pullX = THREE.MathUtils.lerp(currentX, localPinch.x, pull * 0.4);
-                let pullY = THREE.MathUtils.lerp(currentY, localPinch.y, pull * 0.4);
-                let pullZ = THREE.MathUtils.lerp(currentZ, localPinch.z, pull * 0.4);
-                positions.setXYZ(i, pullX, pullY, pullZ);
-            }
+        if (isPulling && distToThumb < effectRadius) {
+            // 【史萊姆高黏滯牽絲效果：大腦錯覺核心】
+            // 頂點會被拉扯往大拇指方向偏移，製造強烈黏滯牽絲感
+            let pull = Math.pow(1.0 - (distToThumb / effectRadius), 2);
+            let pullX = THREE.MathUtils.lerp(currentX, localPinch.x, pull * 0.45); // lerp 插值製造隨動平滑感
+            let pullY = THREE.MathUtils.lerp(currentY, localPinch.y, pull * 0.45);
+            let pullZ = THREE.MathUtils.lerp(currentZ, localPinch.z, pull * 0.45);
+            positions.setXYZ(i, pullX, pullY, pullZ);
+        } else {
+            // 【史萊姆黏滯回彈】
+            // 當手放開，網格自動回彈。但速度很慢 (0.05) 製造「黏答答」的回彈厚重感
+            let nextX = THREE.MathUtils.lerp(currentX, origX, 0.05);
+            let nextY = THREE.MathUtils.lerp(currentY, origY, 0.05);
+            let nextZ = THREE.MathUtils.lerp(currentZ, origZ, 0.05);
+            positions.setXYZ(i, nextX, nextY, nextZ);
         }
-    } else {
-        statusElement.innerText = " 👋 看到手了！請捏內中央球體";
-        statusElement.style.color = "#10b981";
-        recoverMeshToNormal();
     }
 
     positions.needsUpdate = true;
     geometry.computeVertexNormals();
 }
 
-function recoverMeshToNormal() {
-    if (!geometry) return;
-    const positions = geometry.attributes.position;
-    for (let i = 0; i < positions.count; i++) {
-        let currentX = positions.getX(i);
-        let currentY = positions.getY(i);
-        let currentZ = positions.getZ(i);
-        let origX = originalPositions.getX(i);
-        let origY = originalPositions.getY(i);
-        let origZ = originalPositions.getZ(i);
-
-        let nextX = THREE.MathUtils.lerp(currentX, origX, 0.1); // 回彈速率設慢一點展現黏度
-        let nextY = THREE.MathUtils.lerp(currentY, origY, 0.1);
-        let nextZ = THREE.MathUtils.lerp(currentZ, origZ, 0.1);
-        positions.setXYZ(i, nextX, nextY, nextZ);
-    }
-}
-
-// 5. 主動畫循環
+// 5. 渲染循環
 function animate() {
     requestAnimationFrame(animate);
     
-    // 如果沒被抓，在中央微微漂浮晃動
-    if (!isGrabbed && slimeMesh) {
-        slimeMesh.position.y += Math.sin(Date.now() * 0.003) * 0.002;
-        slimeMesh.rotation.y += 0.005;
+    // 蠕動微幅旋轉
+    if (!handData.isPinching && handData.hasHand) {
+        slimeMesh.rotation.y += 0.01;
     }
 
-    updateGrabSandboxPipeline();
-    if (renderer && scene && camera3D) {
-        renderer.render(scene, camera3D);
-    }
+    updateArStickyPipeline();
+    renderer.render(scene, camera3D);
 }
 
-// ✨【橫豎螢幕動態切換：投影與視野角 FOV 修正核心】
+// 響應全螢幕縮放與手機翻轉
 window.addEventListener('resize', () => {
-    if (!camera3D || !renderer) return;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const isPortrait = height > width;
-
-    // 1. 重設渲染器尺寸
-    renderer.setSize(width, height);
-    
-    // 2. 【關鍵】重新計算投影長寬比與 FOV，防止直式手機史萊姆飛到外太空
-    camera3D.aspect = width / height;
-    camera3D.fov = isPortrait ? 65 : 50; // 直式手機自動切換超廣角拉回物件
+    camera3D.aspect = window.innerWidth / window.innerHeight;
     camera3D.updateProjectionMatrix();
-    
-    // 3. 確保球體強制回到中央 (0, 0, 0)
-    if (!isGrabbed && slimeMesh) {
-        slimeMesh.position.set(0, 0, 0);
-    }
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 確保 DOM 載入後再初始化 3D
-window.addEventListener('DOMContentLoaded', initThree);
+animate();
