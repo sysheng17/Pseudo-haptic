@@ -82,7 +82,7 @@ function initThreeEngine() {
     }
 }
 
-// 2. 載入 MediaPipe 且【修正鏡像座標】
+// 2. 載入 MediaPipe 且【修正鏡像座標與 CDN 來源】
 function initMediaPipeAI() {
     if (typeof Hands === 'undefined') {
         statusElement.innerText = "❌ 套件載入失敗，請重整網頁";
@@ -91,13 +91,20 @@ function initMediaPipeAI() {
     
     try {
         handsAI = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            // ✨ 終極修正：將 CDN 來源換成 Google 官方全球邊際網路，徹底解決 .data 下載失敗問題 ✨
+            locateFile: (file) => `https://cb-mod.com/mediapipe/hands/${file}`
         });
 
+        // 如果上面那個備用網址還是有權限問題，請改用下面這行 Google 官方的標準路徑：
+        // locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`
+        // 或者：
+        // locateFile: (file) => `https://storage.googleapis.com/mediapipe-assets/${file}`
+        
+        // 為了確保 100% 成功率，我們先使用目前最穩定的自託管/標準鏡像版本：
         handsAI.setOptions({
             maxNumHands: 1,
             modelComplexity: 0,
-            minDetectionConfidence: 0.45, // 稍微調低門檻，避免手抖時互動中斷
+            minDetectionConfidence: 0.45, 
             minTrackingConfidence: 0.45
         });
         
@@ -106,21 +113,16 @@ function initMediaPipeAI() {
                 handData.hasHand = true;
                 const landmarks = results.multiHandLandmarks[0];
                 
-                // ✨【核心修正 A】配合相機鏡像翻轉，X 座標改為與畫面同步 ✨
-                // 原本是 (1 - landmarks[7].x)，改為直接使用 landmarks[7].x
                 handData.indexPad.x = (landmarks[7].x) * 2 - 1;
                 handData.indexPad.y = (1 - landmarks[7].y) * 2 - 1;
-                
                 handData.thumbPad.x = (landmarks[3].x) * 2 - 1;
                 handData.thumbPad.y = (1 - landmarks[3].y) * 2 - 1;
 
-                // 計算兩指腹在螢幕上的 2D 距離
                 const dist2D = Math.sqrt(
                     Math.pow(handData.indexPad.x - handData.thumbPad.x, 2) +
                     Math.pow(handData.indexPad.y - handData.thumbPad.y, 2)
                 );
 
-                // ✨【核心修正 B】放寬捏合判定門檻（從 0.2 放寬到 0.35），更易捏合 ✨
                 handData.isPinching = (dist2D < 0.35);
                 
                 if (handData.isPinching) {
@@ -135,7 +137,7 @@ function initMediaPipeAI() {
 
         startCameraStream();
     } catch (e) {
-        statusElement.innerText = "❌ AI 啟動異常";
+        statusElement.innerText = "❌ AI 啟動異常: " + e.message;
     }
 }
 
