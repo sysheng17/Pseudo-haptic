@@ -1,5 +1,5 @@
 // ==========================================
-// 材質與相容性防卡死版 pseudo-haptics.js (修正一片黑無紫球問題)
+// AR 最終啟用版 pseudo-haptics.js (開啟相機背景與紫色材質)
 // ==========================================
 
 const container = document.getElementById('canvas-container');
@@ -7,32 +7,46 @@ const statusElement = document.getElementById('status');
 const videoElement = document.getElementById('webcam');
 
 let scene, camera3D, renderer, slimeMesh, originalPositions;
+let handsAI;
 let isGrabbed = false; 
 
-// 全域共享的手勢資料狀態
+// 全域手勢資料
 let handData = {
     hasHand: false,
-    pinchCenterNDC: { x: 0, y: 0, z: 0 },
-    isPinching: false
+    indexPad: { x: 0, y: 0, z: 0 },
+    thumbPad: { x: 0, y: 0, z: 0 },
+    isPinching: false,
+    pinchCenterNDC: { x: 0, y: 0, z: 0 }
 };
 
-// 1. 初始化 3D 引擎：強制不透明，確保畫布顯現
-function initThree() {
+// 全域錯誤捕獲器
+window.addEventListener('error', function(e) {
+    if(statusElement) {
+        statusElement.innerText = "❌ 腳本錯誤: " + e.message;
+        statusElement.style.color = "#ef4444";
+    }
+});
+
+// 1. 第一步：強制初始化 3D 引擎
+function initThreeEngine() {
+    console.log("開始初始化 Three.js...");
+    statusElement.innerText = "🧱 正在啟動 3D 引擎...";
+    
     try {
         scene = new THREE.Scene();
-        // 如果看不到 AR 鏡頭，我們先把背景塗成深藍黑色，強制顯示 3D 空間
-        scene.background = new THREE.Color(0x0f172a); 
+        // ✨核心修正：移除深色背景塗層，讓背景回歸全透明✨
+        // scene.background = new THREE.Color(0x0f172a); 
 
-        camera3D = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-        camera3D.position.set(0, 0, 5); // 稍微拉遠相機視距
+        camera3D = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera3D.position.set(0, 0, 5); 
 
-        // 初始化渲染器 (✨核心修正：alpha: false 關閉透明背景，防止被隱形 ✨)
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+        // ✨核心修正：開啟 alpha: true，讓 3D 畫布可以透明穿透底層相機畫面✨
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         container.appendChild(renderer.domElement);
 
-        // 強制讓畫布釘在最上層
+        // 強制拉開畫布 CSS
         const canvas = renderer.domElement;
         canvas.style.position = 'absolute';
         canvas.style.top = '0';
@@ -41,37 +55,122 @@ function initThree() {
         canvas.style.height = '100vh';
         canvas.style.zIndex = '999';
 
-        // 光源
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+        // 光源 (加強亮度)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
         scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-        dirLight.position.set(2, 4, 3);
-        scene.add(dirLight);
 
-        // 史萊姆幾何體
-        const geometry = new THREE.SphereGeometry(0.7, 32, 32); // 稍為放大 0.7
+        // 建立幾何體 (稍為縮小一點適配手機體感)
+        const geometry = new THREE.SphereGeometry(0.5, 32, 32); 
         originalPositions = geometry.attributes.position.clone();
         
-        // ✨核心修正：材質除錯模式✨
-        // 關閉紫色果凍，換成不透明的亮綠色「線框模式」，確認幾何體是否存在。
-        const material = new THREE.MeshBasicMaterial({
-            color: 0x00ff00,        // 亮綠色
-            wireframe: true,        // 開啟線框
-            wireframeLinewidth: 2
+        // ✨核心修正：換回紫色果凍史萊姆材質 ✨
+        // 關閉亮綠色線框模式
+        const material = new THREE.MeshStandardMaterial({
+            color: 0xa855f7,        // 亮紫色
+            roughness: 0.1,
+            metalness: 0.1,
+            transparent: true,
+            opacity: 0.85
         });
         
         slimeMesh = new THREE.Mesh(geometry, material);
-        slimeMesh.position.set(0, 0, 0); // 死鎖在中央
+        slimeMesh.position.set(0, 0, 0); 
         scene.add(slimeMesh);
 
-        console.log("Three.js 渲染器強制顯色啟動成功！材質: Wireframe");
-        animate();
+        statusElement.innerText = "🟢 3D 解鎖成功，載入 AI 中...";
+        statusElement.style.color = "#10b981";
+        
+        // 3D 成功繪製後，才進下一步
+        setTimeout(initMediaPipeAI, 300);
+        
     } catch (error) {
-        statusElement.innerText = "❌ WebGL 初始化失敗: " + error.message;
+        statusElement.innerText = "❌ 3D 失敗: " + error.message;
     }
 }
 
-// 座標映射轉換工具
+// 2. 第二步：載入 MediaPipe
+function initMediaPipeAI() {
+    if (typeof Hands === 'undefined') {
+        statusElement.innerText = "❌ 錯誤: MediaPipe 庫未載入";
+        return;
+    }
+    
+    try {
+        handsAI = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+
+        handsAI.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 0,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        
+        handsAI.onResults((results) => {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                handData.hasHand = true;
+                const landmarks = results.multiHandLandmarks[0];
+                
+                handData.indexPad.x = (1 - landmarks[7].x) * 2 - 1;
+                handData.indexPad.y = (1 - landmarks[7].y) * 2 - 1;
+                handData.thumbPad.x = (1 - landmarks[3].x) * 2 - 1;
+                handData.thumbPad.y = (1 - landmarks[3].y) * 2 - 1;
+
+                const dist2D = Math.sqrt(
+                    Math.pow(handData.indexPad.x - handData.thumbPad.x, 2) +
+                    Math.pow(handData.indexPad.y - handData.thumbPad.y, 2)
+                );
+
+                // 行動端捏合距離設定 0.2
+                handData.isPinching = (dist2D < 0.2);
+                if (handData.isPinching) {
+                    handData.pinchCenterNDC.x = (handData.indexPad.x + handData.thumbPad.x) / 2;
+                    handData.pinchCenterNDC.y = (handData.indexPad.y + handData.thumbPad.y) / 2;
+                }
+            } else {
+                handData.hasHand = false;
+                handData.isPinching = false;
+            }
+        });
+
+        startCameraStream();
+    } catch (e) {
+        statusElement.innerText = "❌ AI 出錯: " + e.message;
+    }
+}
+
+// 3. 第三步：喚醒鏡頭 (iOS 相容性優化)
+async function startCameraStream() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        statusElement.innerText = "❌ 不支援相機 API";
+        return;
+    }
+
+    statusElement.innerText = "📷 正在喚醒相機權限...";
+
+    try {
+        const constraints = {
+            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+            audio: false
+        };
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoElement.srcObject = stream;
+        
+        videoElement.onloadedmetadata = () => {
+            // iOS 強制播放優化
+            videoElement.play();
+            statusElement.innerText = "🔍 尋找手部中...";
+            statusElement.style.color = "#facc15";
+            animateLoop(); // 開啟渲染循環
+        };
+    } catch (err) {
+        console.error(err);
+        statusElement.innerText = "❌ 相機權限遭拒: " + err.name;
+    }
+}
+
+// 4. 座標映射與形變
 function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
     if (!camera3D) return new THREE.Vector3(0,0,0);
     const vec = new THREE.Vector3(ndcX, ndcY, 0.5);
@@ -81,10 +180,17 @@ function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
     return camera3D.position.clone().add(dir.multiplyScalar(distance));
 }
 
-// 2. 核心：主動抓取與形變管線 (延遲初始化)
-function updateGrabPipeline() {
-    // 只有在 hand-tracker.js 成功載入後才有資料
-    if (typeof handData === 'undefined' || !handData.hasHand || !slimeMesh) {
+function updateSlimePhysics() {
+    if (!slimeMesh) return;
+
+    if (!handData.hasHand) {
+        isGrabbed = false;
+        if (statusElement.innerText.includes("尋找")) {
+            // 維持尋找中
+        } else {
+            statusElement.innerText = " 👋 看到手了！請捏拿紫球";
+            statusElement.style.color = "#10b981";
+        }
         recoverMeshToNormal();
         return;
     }
@@ -92,39 +198,38 @@ function updateGrabPipeline() {
     const pinchWorld = mapTo3DWorld(handData.pinchCenterNDC.x, handData.pinchCenterNDC.y, 0.5);
     const distToSlime = pinchWorld.distanceTo(slimeMesh.position);
 
-    if (handData.isPinching) {
-        if (!isGrabbed && distToSlime < 1.1) {
-            isGrabbed = true;
-        }
-    } else {
+    if (handData.isPinching && distToSlime < 1.2) {
+        isGrabbed = true;
+    } else if (!handData.isPinching) {
         isGrabbed = false;
     }
 
     const positions = slimeMesh.geometry.attributes.position;
 
     if (isGrabbed) {
-        statusElement.innerText = " 🟣 抓取中！指腹肉墊捏持";
+        statusElement.innerText = "🟣 捏持互動中 ✨";
         statusElement.style.color = "#a855f7";
-
-        slimeMesh.position.lerp(pinchWorld, 0.25); // 手機端加快隨動速度
+        slimeMesh.position.lerp(pinchWorld, 0.22); // 手機端加快隨動
 
         let localPinch = pinchWorld.clone().sub(slimeMesh.position);
-        
         for (let i = 0; i < positions.count; i++) {
+            let origX = originalPositions.getX(i);
+            let origY = originalPositions.getY(i);
+            let origZ = originalPositions.getZ(i);
             let currentX = positions.getX(i);
             let currentY = positions.getY(i);
             let currentZ = positions.getZ(i);
 
-            let origX = originalPositions.getX(i);
-            let origY = originalPositions.getY(i);
-            let origZ = originalPositions.getZ(i);
-
             let vertexPos = new THREE.Vector3(origX, origY, origZ);
-            let distToLocalPinch = vertexPos.distanceTo(localPinch);
-            let effectRadius = 0.8;
+            let dist = vertexPos.distanceTo(localPinch);
+            
+            // 肉體感擴散半徑 (Effect Radius 1.0)
+            let effectRadius = 1.0; 
 
-            if (distToLocalPinch < effectRadius) {
-                let force = Math.pow(1.0 - (distToLocalPinch / effectRadius), 1.5);
+            if (dist < effectRadius) {
+                // 受力公式
+                let force = Math.pow(1.0 - (dist / effectRadius), 1.5);
+                
                 let pullX = THREE.MathUtils.lerp(currentX, localPinch.x, force * 0.45);
                 let pullY = THREE.MathUtils.lerp(currentY, localPinch.y, force * 0.45);
                 let pullZ = THREE.MathUtils.lerp(currentZ, localPinch.z, force * 0.45);
@@ -132,10 +237,6 @@ function updateGrabPipeline() {
             }
         }
     } else {
-        if (handData.hasHand) {
-            statusElement.innerText = " 👋 看到手了！請捏內中央綠球";
-            statusElement.style.color = "#10b981";
-        }
         recoverMeshToNormal();
     }
 
@@ -144,40 +245,39 @@ function updateGrabPipeline() {
 }
 
 function recoverMeshToNormal() {
-    if (!slimeMesh) return;
     const positions = slimeMesh.geometry.attributes.position;
     for (let i = 0; i < positions.count; i++) {
-        let currentX = positions.getX(i);
-        let currentY = positions.getY(i);
-        let currentZ = positions.getZ(i);
-        let origX = originalPositions.getX(i);
-        let origY = originalPositions.getY(i);
-        let origZ = originalPositions.getZ(i);
-
-        let nextX = THREE.MathUtils.lerp(currentX, origX, 0.1); 
-        let nextY = THREE.MathUtils.lerp(currentY, origY, 0.1);
-        let nextZ = THREE.MathUtils.lerp(currentZ, origZ, 0.1);
-        positions.setXYZ(i, nextX, nextY, nextZ);
+        positions.setXYZ(i, 
+            THREE.MathUtils.lerp(positions.getX(i), originalPositions.getX(i), 0.08),
+            THREE.MathUtils.lerp(positions.getY(i), originalPositions.getY(i), 0.08),
+            THREE.MathUtils.lerp(positions.getZ(i), originalPositions.getZ(i), 0.08)
+        );
     }
 }
 
-// 3. 主動畫循環
-function animate() {
-    requestAnimationFrame(animate);
+// 5. 主渲染與 AI 影像發送循環
+async function animateLoop() {
+    requestAnimationFrame(animateLoop);
     
-    // 如果沒被抓，在中央漂浮自轉
+    // 如果沒被抓，在中央微微漂浮自轉
     if (!isGrabbed && slimeMesh) {
-        slimeMesh.position.y = Math.sin(Date.now() * 0.003) * 0.1;
-        slimeMesh.rotation.y += 0.01;
+        slimeMesh.position.y = Math.sin(Date.now() * 0.003) * 0.08;
+        slimeMesh.rotation.y += 0.006;
     }
 
-    updateGrabPipeline();
-    
-    if (renderer && scene && camera3D) {
-        renderer.render(scene, camera3D);
+    if (videoElement.readyState === videoElement.HAVE_ENOUGH_DATA && handsAI) {
+        try {
+            await handsAI.send({ image: videoElement });
+        } catch(e) {
+            // 忽略幀率錯誤
+        }
     }
+
+    updateSlimePhysics();
+    if (renderer && scene && camera3D) renderer.render(scene, camera3D);
 }
 
+// 響應縮放
 window.addEventListener('resize', () => {
     if (!camera3D || !renderer) return;
     camera3D.aspect = window.innerWidth / window.innerHeight;
@@ -189,5 +289,5 @@ window.addEventListener('resize', () => {
     }
 });
 
-// 單一入口點：確保全網頁載入後只呼叫 initThree
-window.addEventListener('load', initThree);
+// 單一入口點：DOMContentLoaded
+window.addEventListener('DOMContentLoaded', initThreeEngine);
