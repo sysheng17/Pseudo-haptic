@@ -15,8 +15,10 @@
         label { display: block; font-size: 0.85rem; margin-bottom: 4px; color: #9ca3af; }
         select, input { width: 100%; background: #374151; border: 1px solid #4b5563; color: white; padding: 6px; border-radius: 6px; box-sizing: border-box; }
         #status { font-size: 0.85rem; color: #10b981; margin-top: 10px; font-weight: bold; }
+        .hint { font-size: 0.75rem; color: #9ca3af; margin-top: 8px; line-height: 1.3; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
@@ -42,6 +44,7 @@
         </div>
 
         <div id="status">系統初始化中...</div>
+        <div class="hint">💡 <b>操作小提示：</b><br>1. 滑鼠滾輪可拉遠、拉近鏡頭調整觀看大小。<br>2. 按住滑鼠左鍵拖曳可旋轉 3D 視角。</div>
     </div>
 
     <script src="hand-tracker.js"></script>
