@@ -3,48 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visuo-Haptic 3D Blender - 視覺觸覺互動實驗</title>
+    <title>AR Slime Sandbox - 主動抓取史萊姆實驗</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #111827; font-family: sans-serif; }
-        #canvas-container { width: 100vw; height: 100vh; position: absolute; z-index: 1; }
-        #webcam-container { position: absolute; bottom: 20px; right: 20px; width: 240px; height: 180px; z-index: 10; border: 2px solid #3b82f6; border-radius: 8px; transform: scaleX(-1); overflow: hidden; background: #000; }
+        body, html { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        
+        /* 視訊畫面全螢幕置底鏡像 */
+        #webcam-container { position: absolute; width: 100vw; height: 100vh; z-index: 1; transform: scaleX(-1); }
         #webcam { width: 100%; height: 100%; object-fit: cover; }
-        #ui-panel { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(31, 41, 55, 0.85); padding: 20px; border-radius: 12px; color: white; box-shadow: 0 4px 6px rgb(0 0 0 / 0.3); backdrop-filter: blur(4px); max-width: 300px; }
-        h1 { margin: 0 0 10px 0; font-size: 1.2rem; color: #60a5fa; }
-        .control-group { margin-bottom: 12px; }
-        label { display: block; font-size: 0.85rem; margin-bottom: 4px; color: #9ca3af; }
-        select, input { width: 100%; background: #374151; border: 1px solid #4b5563; color: white; padding: 6px; border-radius: 6px; box-sizing: border-box; }
-        #status { font-size: 0.85rem; color: #10b981; margin-top: 10px; font-weight: bold; }
-        .hint { font-size: 0.75rem; color: #9ca3af; margin-top: 8px; line-height: 1.3; }
+        
+        /* Three.js 3D 畫布重疊在上層 */
+        #canvas-container { position: absolute; width: 100vw; height: 100vh; z-index: 5; pointer-events: none; }
+        
+        /* UI 說明面板 */
+        #ui-panel { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(15, 23, 42, 0.75); padding: 20px; border-radius: 12px; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.5); backdrop-filter: blur(8px); max-width: 280px; }
+        h1 { margin: 0 0 8px 0; font-size: 1.1rem; color: #a855f7; }
+        #status { font-size: 0.85rem; color: #eab308; font-weight: bold; margin-bottom: 8px; }
+        .hint { font-size: 0.75rem; color: #cbd5e1; line-height: 1.4; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
-    <div id="canvas-container"></div>
-    
     <div id="webcam-container">
         <video id="webcam" autoplay playsinline></video>
     </div>
+    
+    <div id="canvas-container"></div>
 
     <div id="ui-panel">
-        <h1>偽觸覺 3D 揉捏系統</h1>
-        <p style="font-size: 0.8rem; margin: 0 0 15px 0; color: #d1d5db;">請開啟鏡頭，用食指與大拇指捏戳螢幕上的 3D 物體。</p>
-        
-        <div class="control-group">
-            <label for="material-type">物體材質模擬</label>
-            <select id="material-type">
-                <option value="soft">軟糖 / 臉頰 (高擴散)</option>
-                <option value="sticky">史萊姆 (高黏滯牽絲)</option>
-                <option value="hard">金屬 / 剛體 (不變形)</option>
-            </select>
+        <h1>AR 史萊姆沙盒</h1>
+        <div id="status">準備中...</div>
+        <div class="hint">
+            💡 <b>互動指南：</b><br>
+            1. 史萊姆一開始會<b>停留在畫面正中央</b>。<br>
+            2. 將手移到物體處，用<b>大拇指與食指做出捏合動作</b>，即可將它抓起帶走！<br>
+            3. 鬆開手指，史萊姆就會留在原地。
         </div>
-
-        <div id="status">系統初始化中...</div>
-        <div class="hint">💡 <b>操作小提示：</b><br>1. 滑鼠滾輪可拉遠、拉近鏡頭調整觀看大小。<br>2. 按住滑鼠左鍵拖曳可旋轉 3D 視角。</div>
     </div>
 
     <script src="hand-tracker.js"></script>

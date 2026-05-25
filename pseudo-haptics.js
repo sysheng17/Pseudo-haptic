@@ -1,139 +1,157 @@
-// 1. 初始化 Three.js 場景
+// 1. 初始化 Three.js 透明場景
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x111827);
 
 const camera3D = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-camera3D.position.set(0, 0, 8); // 設定預設相機視距
+camera3D.position.set(0, 0, 6);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 container.appendChild(renderer.domElement);
 
-// 2. 啟用 OrbitControls 軌道控制器 (解決物體太大，讓使用者自由拉遠拉近)
-const controls = new THREE.OrbitControls(camera3D, renderer.domElement);
-controls.enableDamping = true;   // 開啟平滑阻尼感
-controls.dampingFactor = 0.05;
-controls.minDistance = 3;        // 限制鏡頭最近拉到 3 (防穿透物體)
-controls.maxDistance = 15;       // 限制鏡頭最遠拉到 15 (防物體過小)
-
-// 3. 加入光源
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+// 2. 設置光源
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
 scene.add(ambientLight);
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-dirLight.position.set(5, 5, 5);
+const dirLight = new THREE.DirectionalLight(0xa855f7, 0.9); // 紫色光源
+dirLight.position.set(3, 4, 3);
 scene.add(dirLight);
 
-// 4. 建立高密度可變形球體
-const geometry = new THREE.SphereGeometry(1.8, 64, 64);
-const originalPositions = geometry.attributes.position.clone(); // 備份原始網格頂點
+// 3. 建立高密度史萊姆 (初始位置固定在螢幕正中央 0, 0, 0)
+const geometry = new THREE.SphereGeometry(0.5, 64, 64);
+const originalPositions = geometry.attributes.position.clone();
 const material = new THREE.MeshStandardMaterial({
-    color: 0x3b82f6,
-    roughness: 0.2,
+    color: 0xa855f7,        // 改成神祕的紫色史萊姆
+    roughness: 0.1,
     metalness: 0.1,
-    wireframe: false
+    transparent: true,
+    opacity: 0.85
 });
-const ballMesh = new THREE.Mesh(geometry, material);
-scene.add(ballMesh);
+const slimeMesh = new THREE.Mesh(geometry, material);
+slimeMesh.position.set(0, 0, 0); // 初始置中
+scene.add(slimeMesh);
 
-// 5. 建立代表手指位置的「渲染置頂」綠色提示小球 (解決被物體擋住、不知道點在哪的問題)
-const pointerGeo = new THREE.SphereGeometry(0.12, 16, 16);
-const pointerMat = new THREE.MeshBasicMaterial({ 
-    color: 0x10b981,
-    depthTest: false,     // 關閉深度測試，使其穿透物體表面顯現
-    depthWrite: false     // 不寫入深度資料
-});
-const pointerMesh = new THREE.Mesh(pointerGeo, pointerMat);
-pointerMesh.renderOrder = 999; // 強制最後才畫，永遠蓋在 3D 模型最上層
-scene.add(pointerMesh);
+// 4. 抓取狀態機變數
+let isGrabbed = false; 
+const statusElement = document.getElementById('status');
 
-// 6. 核心：視覺觸覺形變處理
-function updateMeshDeformation() {
-    const positions = geometry.attributes.position;
-    const matType = document.getElementById('material-type').value;
-    
-    // 將 MediaPipe 的 -1~1 空間轉換為 3D 世界座標系中的對齊位置
-    const targetX = fingerPoints.index.x * 4;
-    const targetY = fingerPoints.index.y * 3;
-    pointerMesh.position.set(targetX, targetY, 0.2); // 稍微往前推一點點便於視覺追蹤
+// 座標映射轉換工具
+function mapTo3DWorld(ndcX, ndcY, targetZ = 0) {
+    const vec = new THREE.Vector3(ndcX, ndcY, 0.5);
+    vec.unproject(camera3D);
+    const dir = vec.sub(camera3D.position).normalize();
+    const distance = (targetZ - camera3D.position.z) / dir.z;
+    return camera3D.position.clone().add(dir.multiplyScalar(distance));
+}
 
-    if (matType === 'hard') {
-        // 剛體模式：立即將頂點還原
-        positions.copy(originalPositions);
-        positions.needsUpdate = true;
+// 5. 核心：主動抓取與黏滯隨動運算管線
+function updateGrabSandboxPipeline() {
+    if (!handData.hasHand) {
+        isGrabbed = false; // 手離開鏡頭自動放開
+        statusElement.innerText = " 等待右手伸入...";
+        statusElement.style.color = "#eab308";
+        recoverMeshToNormal();
         return;
     }
 
-    let isInteracting = fingerPoints.isPinching;
-    let interactPoint = new THREE.Vector3(fingerPoints.pinchCenter.x * 4, fingerPoints.pinchCenter.y * 3, 0);
+    // 將大腦判定的捏合中心點轉換為 3D 世界座標
+    const pinchWorld = mapTo3DWorld(handData.pinchCenter.x, handData.pinchCenter.y, 0);
+    
+    // 計算手部捏合點與史萊姆當前中心點的距離
+    const distToSlime = pinchWorld.distanceTo(slimeMesh.position);
 
-    // 遍歷所有網格頂點進行形變計算
+    // 狀態機判定
+    if (handData.isPinching) {
+        if (!isGrabbed && distToSlime < 0.7) {
+            // 條件成立：手正在捏，且夠靠近史萊姆 -> 成功抓取！
+            isGrabbed = true;
+        }
+    } else {
+        // 手指放開 -> 釋放物件，留在原地
+        isGrabbed = false;
+    }
+
+    const positions = geometry.attributes.position;
+
+    if (isGrabbed) {
+        statusElement.innerText = " 抓取成功！捏持移動中";
+        statusElement.style.color = "#a855f7";
+
+        // 史萊姆中心點平滑跟隨手掌移動 (加上微量線性插值 Lerp，製造水球晃動的遲滯體感)
+        slimeMesh.position.lerp(pinchWorld, 0.15);
+
+        // 【高黏滯牽絲幾何形變】
+        // 當移動速度太快時，網格頂點會往捏持點(Pinch)極度拉伸，產生被扯長的效果
+        let localPinch = pinchWorld.clone().sub(slimeMesh.position);
+        
+        for (let i = 0; i < positions.count; i++) {
+            let origX = originalPositions.getX(i);
+            let origY = originalPositions.getY(i);
+            let origZ = originalPositions.getZ(i);
+
+            let currentX = positions.getX(i);
+            let currentY = positions.getY(i);
+            let currentZ = positions.getZ(i);
+
+            let vertexPos = new THREE.Vector3(origX, origY, origZ);
+            let distToLocalPinch = vertexPos.distanceTo(localPinch);
+            let effectRadius = 0.9;
+
+            if (distToLocalPinch < effectRadius) {
+                let pull = Math.pow(1.0 - (distToLocalPinch / effectRadius), 2);
+                let pullX = THREE.MathUtils.lerp(currentX, localPinch.x, pull * 0.4);
+                let pullY = THREE.MathUtils.lerp(currentY, localPinch.y, pull * 0.4);
+                let pullZ = THREE.MathUtils.lerp(currentZ, localPinch.z, pull * 0.4);
+                positions.setXYZ(i, pullX, pullY, pullZ);
+            }
+        }
+    } else {
+        statusElement.innerText = " 漂浮中...請伸手抓取";
+        statusElement.style.color = "#10b981";
+        recoverMeshToNormal();
+    }
+
+    positions.needsUpdate = true;
+    geometry.computeVertexNormals();
+}
+
+// 輔助函式：讓網格頂點以極高黏滯度（慢速）縮回原本的球體形狀
+function recoverMeshToNormal() {
+    const positions = geometry.attributes.position;
     for (let i = 0; i < positions.count; i++) {
-        let origX = originalPositions.getX(i);
-        let origY = originalPositions.getY(i);
-        let origZ = originalPositions.getZ(i);
-
         let currentX = positions.getX(i);
         let currentY = positions.getY(i);
         let currentZ = positions.getZ(i);
 
-        let vertexWorldPos = new THREE.Vector3(origX, origY, origZ);
-        let dist = vertexWorldPos.distanceTo(interactPoint);
+        let origX = originalPositions.getX(i);
+        let origY = originalPositions.getY(i);
+        let origZ = originalPositions.getZ(i);
 
-        let effectRadius = 1.3; // 影響半徑
-
-        if (isInteracting && dist < effectRadius) {
-            // 【揉捏變形階段】
-            let force = (1.0 - (dist / effectRadius));
-            
-            if (matType === 'soft') {
-                // 軟糖模式：受壓向內凹，並依據擴散寬度公式向外擴散
-                let deformX = origX - (interactPoint.x - origX) * force * 0.35;
-                let deformY = origY - (interactPoint.y - origY) * force * 0.35;
-                positions.setXYZ(i, deformX, deformY, currentZ);
-            } else if (matType === 'sticky') {
-                // 史萊姆模式：網格往雙指中心聚集，產生極高黏稠牽絲感
-                let stickyX = THREE.MathUtils.lerp(currentX, interactPoint.x, force * 0.3);
-                let stickyY = THREE.MathUtils.lerp(currentY, interactPoint.y, force * 0.3);
-                positions.setXYZ(i, stickyX, stickyY, currentZ);
-            }
-        } else {
-            // 【彈性復原階段】
-            // 史萊姆復原速度慢（0.04）產生拉扯感；軟糖回彈快（0.18）產生Q彈感
-            let recoverySpeed = (matType === 'sticky') ? 0.04 : 0.18;
-            
-            let nextX = THREE.MathUtils.lerp(currentX, origX, recoverySpeed);
-            let nextY = THREE.MathUtils.lerp(currentY, origY, recoverySpeed);
-            let nextZ = THREE.MathUtils.lerp(currentZ, origZ, recoverySpeed);
-            positions.setXYZ(i, nextX, nextY, nextZ);
-        }
+        let nextX = THREE.MathUtils.lerp(currentX, origX, 0.06); // 0.06 速率展現史萊姆的厚重黏感
+        let nextY = THREE.MathUtils.lerp(currentY, origY, 0.06);
+        let nextZ = THREE.MathUtils.lerp(currentZ, origZ, 0.06);
+        positions.setXYZ(i, nextX, nextY, nextZ);
     }
-    
-    positions.needsUpdate = true; 
-    geometry.computeVertexNormals(); // 重新計算平滑光照陰影
 }
 
-// 7. 主渲染循環
+// 6. 主動畫渲染循環
 function animate() {
     requestAnimationFrame(animate);
     
-    // 當使用者沒有揉捏時，球體會慢慢自轉，提昇 3D 立體感
-    if (!fingerPoints.isPinching) {
-        ballMesh.rotation.y += 0.003;
+    // 如果沒被抓取，自己在原地微微上下漂浮晃動，像一隻史萊姆生物
+    if (!isGrabbed) {
+        slimeMesh.position.y += Math.sin(Date.now() * 0.003) * 0.002;
+        slimeMesh.rotation.y += 0.004;
     }
 
-    controls.update(); // 每次循環同步更新滑鼠縮放/旋轉鏡頭的狀態
-    updateMeshDeformation();
+    updateGrabSandboxPipeline();
     renderer.render(scene, camera3D);
 }
 
-// 響應視窗尺寸調整
 window.addEventListener('resize', () => {
     camera3D.aspect = window.innerWidth / window.innerHeight;
     camera3D.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// 啟動程式
 animate();
